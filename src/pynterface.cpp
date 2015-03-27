@@ -159,6 +159,90 @@ extern "C"
     return Py_BuildValue("Od", membership, q);
   }
 
+  static PyObject* _find_partition_preproc_graph(PyObject *self, PyObject *args, PyObject *keywds)
+  {
+    PyObject* py_obj_graph = NULL;
+    PyObject* py_initial_membership = NULL;
+    char* method = "Modularity";
+    PyObject* py_weights = NULL;
+    double resolution_parameter = 1.0;
+    int consider_comms = Optimiser::ALL_NEIGH_COMMS;
+
+    static char* kwlist[] = {"graph", "method", "initial_membership", "weights", "resolution_parameter", "consider_all_comms", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, keywds, "Os|OOdi", kwlist,
+                                     &py_obj_graph, &method, &py_initial_membership, &py_weights, &resolution_parameter, &consider_comms))
+        return NULL;
+
+    #ifdef DEBUG
+      cerr << "Consider comms " << consider_comms << " ." << endl;
+    #endif
+
+    Optimiser opt;
+    opt.consider_comms = consider_comms;
+
+    #if PY_MAJOR_VERSION >= 3
+      Graph* graph = (Graph*) PyCapsule_GetPointer(py_obj_graph, NULL);
+    #else
+      Graph* graph = (Graph*) PyCObject_AsVoidPtr(py_obj_graph);
+    #endif
+
+    vector<size_t> initial_membership;
+    int has_initial_membership = false;
+    // If necessary create an initial partition
+    if (py_initial_membership != NULL && py_initial_membership != Py_None)
+    {
+      #ifdef DEBUG
+        cerr << "Reading initial membership." << endl;
+      #endif
+      has_initial_membership = true;
+      size_t n = PyList_Size(py_initial_membership);
+      initial_membership.resize(n);
+      for (size_t v = 0; v < n; v++)
+        initial_membership[v] = PyLong_AsLong(PyList_GetItem(py_initial_membership, v));
+    }
+
+    MutableVertexPartition* partition;
+    if (has_initial_membership)
+      partition = create_partition(graph, method, &initial_membership, resolution_parameter);
+    else
+      partition = create_partition(graph, method, NULL, resolution_parameter);
+
+    #ifdef DEBUG
+      cerr << "Using partition at address " << partition << endl;
+    #endif
+
+    if (partition == NULL)
+    {
+      if (PyErr_Occurred() == NULL)
+        PyErr_SetString(PyExc_ValueError, "Could not initialize partition. Please check parameters or contact the maintainer.");
+      return NULL;
+    }
+
+    opt.optimize_partition(partition);
+
+    #ifdef DEBUG
+      cerr << "Partition contains " << partition->nb_communities() << " communities, quality "
+           << partition->quality() << "." << endl;
+    #endif
+
+    size_t n = partition->get_graph()->vcount();
+    PyObject* membership = PyList_New(n);
+    for (size_t v = 0; v < n; v++)
+      #if PY_MAJOR_VERSION >= 3
+        PyList_SetItem(membership, v, PyLong_FromLong(partition->membership(v)));
+      #else
+        PyList_SetItem(membership, v, PyInt_FromLong(partition->membership(v)));
+      #endif
+
+    double q = partition->quality();
+
+    delete partition->get_graph();
+    delete partition;
+
+    return Py_BuildValue("Od", membership, q);
+  }
+
   static PyObject* _quality(PyObject *self, PyObject *args, PyObject *keywds)
   {
     PyObject* py_obj_graph = NULL;
@@ -197,7 +281,28 @@ extern "C"
     return Py_BuildValue("d", q);
   }
 
-  static PyObject* _preproc_graph(PyObject* py_obj_graph, PyObject* py_weights)
+  static PyObject* _create_preproc_graph(PyObject *self, PyObject *args, PyObject *keywds)
+  {
+    PyObject* py_obj_graph = NULL;
+    PyObject* py_weights = NULL;
+
+    static char* kwlist[] = {"graph", "weights", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, keywds, "O|O", kwlist,
+                                     &py_obj_graph, &py_weights))
+        return NULL;
+
+    Graph* graph = preproc_graph(py_obj_graph, py_weights);
+
+    // Return pointer
+    #if PY_MAJOR_VERSION >= 3
+      return PyCapsule_New(graph);
+    #else
+      return PyCObject_FromVoidPtr(graph, NULL);
+    #endif
+  }
+
+  static Graph* preproc_graph(PyObject* py_obj_graph, PyObject* py_weights)
   {
     #if PY_MAJOR_VERSION >= 3
       igraph_t* py_graph = (igraph_t*) PyCapsule_GetPointer(py_obj_graph, NULL);
@@ -230,8 +335,7 @@ extern "C"
     #ifdef DEBUG
       cerr << "Created graph " << graph << endl;
     #endif
-
-    // TODO: Return Capsule or CPointer.
+    return graph;
   }
 
   static MutableVertexPartition* create_partition(Graph* graph, char* method, vector<size_t>* initial_membership, double resolution_parameter)
