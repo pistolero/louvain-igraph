@@ -197,6 +197,43 @@ extern "C"
     return Py_BuildValue("d", q);
   }
 
+  static PyObject* _preproc_graph(PyObject* py_obj_graph, PyObject* py_weights)
+  {
+    #if PY_MAJOR_VERSION >= 3
+      igraph_t* py_graph = (igraph_t*) PyCapsule_GetPointer(py_obj_graph, NULL);
+    #else
+      igraph_t* py_graph = (igraph_t*) PyCObject_AsVoidPtr(py_obj_graph);
+    #endif
+
+    // If necessary create a weighted graph
+    Graph* graph = NULL;
+    #ifdef DEBUG
+      cerr << "Creating graph."<< endl;
+    #endif
+    if (py_weights != NULL && py_weights != Py_None)
+    {
+      #ifdef DEBUG
+        cerr << "Reading weights." << endl;
+      #endif
+      vector<double> weights;
+      size_t m = PyList_Size(py_weights);
+      weights.resize(m);
+      for (size_t e = 0; e < m; e++)
+        weights[e] = PyLong_AsLong(PyList_GetItem(py_weights, e));
+
+      graph = new Graph(py_graph, weights);
+    }
+    else
+    {
+      graph = new Graph(py_graph);
+    }
+    #ifdef DEBUG
+      cerr << "Created graph " << graph << endl;
+    #endif
+
+    // TODO: Return Capsule or CPointer.
+  }
+
   static MutableVertexPartition* create_partition(Graph* graph, char* method, vector<size_t>* initial_membership, double resolution_parameter)
   {
     MutableVertexPartition* partition;

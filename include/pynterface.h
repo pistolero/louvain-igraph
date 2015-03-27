@@ -23,6 +23,7 @@ extern "C"
   static PyObject* _find_partition_multiplex(PyObject *self, PyObject *args, PyObject *keywds);
   static PyObject* _find_partition(PyObject *self, PyObject *args, PyObject *keywds);
   static PyObject* _quality(PyObject *self, PyObject *args, PyObject *keywds);
+  static PyObject* _preproc_graph(PyObject* py_obj_graph, PyObject* py_weights);
 
   static MutableVertexPartition* create_partition(Graph* graph, char* method, vector<size_t>* initial_membership, double resolution_parameter);
   static MutableVertexPartition* create_partition_from_py(PyObject* py_obj_graph, char* method, PyObject* py_initial_membership, PyObject* py_weights, double resolution_parameter);
